@@ -1,35 +1,98 @@
-"""TODO: Add a proper docstring here.
+# Copyright 2021 Canonical Ltd.
+# See LICENSE file for licensing details.
 
-This is a placeholder docstring for this charm library. Docstrings are
-presented on Charmhub and updated whenever you push a new version of the
-library.
+"""Library for the mutual-tls relation.
 
-Complete documentation about creating and documenting libraries can be found
-in the SDK docs at https://juju.is/docs/sdk/libraries.
+This library contains the Requires and Provides classes for handling the mutual-tls interface.
 
-See `charmcraft publish-lib` and `charmcraft fetch-lib` for details of how to
-share and consume charm libraries. They serve to enhance collaboration
-between charmers. Use a charmer's libraries for classes that handle
-integration with their charm.
+## Getting Started
+From a charm directory, fetch the library using `charmcraft`:
 
-Bear in mind that new revisions of the different major API versions (v0, v1,
-v2 etc) are maintained independently.  You can continue to update v0 and v1
-after you have pushed v3.
+```shell
+charmcraft fetch-lib charms.mutual_tls_interface.v0.mutual_tls
+```
 
-Markdown is supported, following the CommonMark specification.
+Add the following libraries to the charm's `requirements.txt` file:
+- jsonschema
+
+### Provider charm
+The provider charm is the charm providing public certificates to another charm that requires them.
+
+Example:
+```python
+from ops.charm import CharmBase, RelationJoinedEvent
+from ops.main import main
+
+from lib.charms.mutual_tls_interface.v0.mutual_tls import MutualTLSProvides
+
+
+class DummyMutualTLSProviderCharm(CharmBase):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.mutual_tls = MutualTLSProvides(self, "certificates")
+        self.framework.observe(
+            self.on.certificates_relation_joined, self._on_certificates_relation_joined
+        )
+
+    def _on_certificates_relation_joined(self, event: RelationJoinedEvent):
+        certificate = "my certificate"
+        ca = "my CA certificate"
+        chain = ["certificate 1", "certificate 2"]
+        self.mutual_tls.set_certificate(certificate=certificate, ca=ca, chain=chain)
+
+
+if __name__ == "__main__":
+    main(DummyMutualTLSProviderCharm)
+```
+
+### Requirer charm
+The requirer charm is the charm requiring certificates from another charm that provides them.
+
+Example:
+```python
+
+from ops.charm import CharmBase
+from ops.main import main
+
+from lib.charms.mutual_tls_interface.v0.mutual_tls import (
+    CertificateAvailableEvent,
+    MutualTLSRequires,
+)
+
+
+class DummyMutualTLSRequirerCharm(CharmBase):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.mutual_tls = MutualTLSRequires(self, "certificates")
+        self.framework.observe(
+            self.mutual_tls.on.certificate_available, self._on_certificate_available
+        )
+
+    def _on_certificate_available(self, event: CertificateAvailableEvent):
+        print(event.certificate)
+        print(event.ca)
+        print(event.chain)
+
+
+if __name__ == "__main__":
+    main(DummyMutualTLSRequirerCharm)
+```
+
+You can relate both charms by running:
+
+```bash
+juju relate <mutual-tls provider charm> <mutual-tls requirer charm>
+```
+
 """
 
 
 import json
 import logging
-from typing import List
+from typing import List, Optional
 
 from jsonschema import exceptions, validate  # type: ignore[import]
-from ops.charm import (
-    CharmBase,
-    CharmEvents,
-    RelationChangedEvent,
-)
+from ops.charm import CharmBase, CharmEvents, RelationChangedEvent
 from ops.framework import EventBase, EventSource, Handle, Object
 
 # The unique Charmhub library identifier, never change it
@@ -158,7 +221,7 @@ class MutualTLSProvides(Object):
         certificate: str,
         ca: str,
         chain: List[str],
-        relation_id: int = None,
+        relation_id: Optional[int] = None,
     ) -> None:
         """Add certificates to relation data.
 
@@ -175,11 +238,15 @@ class MutualTLSProvides(Object):
             relation_name=self.relationship_name,
             relation_id=relation_id,
         )
+        if not relation:
+            raise RuntimeError(
+                f"No relation found with relation name {self.relationship_name} and relation ID {relation_id}"
+            )
         relation.data[self.model.unit]["certificate"] = certificate
         relation.data[self.model.unit]["ca"] = ca
         relation.data[self.model.unit]["chain"] = json.dumps(chain)
 
-    def remove_certificate(self, relation_id: int = None) -> None:
+    def remove_certificate(self, relation_id: Optional[int] = None) -> None:
         """Remove a given certificate from relation data.
 
         Args:
@@ -192,6 +259,10 @@ class MutualTLSProvides(Object):
             relation_name=self.relationship_name,
             relation_id=relation_id,
         )
+        if not relation:
+            return
+        if not relation.data:
+            return
         relation.data[self.model.unit].pop("certificate")
         relation.data[self.model.unit].pop("ca")
         relation.data[self.model.unit].pop("chain")
@@ -221,17 +292,17 @@ class MutualTLSRequires(Object):
         )
 
     @staticmethod
-    def _relation_data_is_valid(certificates_data: dict) -> bool:
+    def _relation_data_is_valid(relation_data: dict) -> bool:
         """Return whether relation data is valid based on json schema.
 
         Args:
-            certificates_data: Certificate data in dict format.
+            relation_data: Relation data in dict format.
 
         Returns:
             bool: Whether relation data is valid.
         """
         try:
-            validate(instance=certificates_data, schema=PROVIDER_JSON_SCHEMA)
+            validate(instance=relation_data, schema=PROVIDER_JSON_SCHEMA)
             return True
         except exceptions.ValidationError:
             return False
@@ -245,22 +316,18 @@ class MutualTLSRequires(Object):
         Returns:
             None
         """
-        relation = self.model.get_relation(self.relationship_name, relation_id=event.relation.id)
-        if not relation:
-            logger.warning(f"No relation: {self.relationship_name}")
+        if not event.unit:
+            logger.info(f"No remote unit in relation: {self.relationship_name}")
             return
-        if not relation.app:
-            logger.warning(f"No remote app in relation: {self.relationship_name}")
-            return
-        provider_relation_data = _load_relation_data(relation.data[relation.app])
-        if not self._relation_data_is_valid(provider_relation_data):
+        remote_unit_relation_data = _load_relation_data(event.relation.data[event.unit])
+        if not self._relation_data_is_valid(remote_unit_relation_data):
             logger.warning(
                 f"Provider relation data did not pass JSON Schema validation: "
-                f"{event.relation.data[relation.app]}"
+                f"{event.relation.data[event.unit]}"
             )
             return
         self.on.certificate_available.emit(
-            certificate=provider_relation_data["certificate"],
-            ca=provider_relation_data["ca"],
-            chain=provider_relation_data["chain"],
+            certificate=remote_unit_relation_data["certificate"],
+            ca=remote_unit_relation_data["ca"],
+            chain=remote_unit_relation_data["chain"],
         )
