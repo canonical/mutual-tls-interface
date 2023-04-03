@@ -185,21 +185,19 @@ class CertificateAvailableEvent(EventBase):
 def _load_relation_data(raw_relation_data: dict) -> dict:
     """Load relation data from the relation data bag.
 
-    Json loads all data.
-
     Args:
         raw_relation_data: Relation data from the databag
 
     Returns:
         dict: Relation data in dict format.
     """
-    certificate_data = {}
+    loaded_relation_data = {}
     for key in raw_relation_data:
         try:
-            certificate_data[key] = json.loads(raw_relation_data[key])
+            loaded_relation_data[key] = json.loads(raw_relation_data[key])
         except (json.decoder.JSONDecodeError, TypeError):
-            certificate_data[key] = raw_relation_data[key]
-    return certificate_data
+            loaded_relation_data[key] = raw_relation_data[key]
+    return loaded_relation_data
 
 
 class MutualTLSRequirerCharmEvents(CharmEvents):
@@ -240,7 +238,8 @@ class MutualTLSProvides(Object):
         )
         if not relation:
             raise RuntimeError(
-                f"No relation found with relation name {self.relationship_name} and relation ID {relation_id}"
+                f"No relation found with relation name {self.relationship_name} and "
+                f"relation ID {relation_id}"
             )
         relation.data[self.model.unit]["certificate"] = certificate
         relation.data[self.model.unit]["ca"] = ca
