@@ -10,6 +10,8 @@ from tests.unit.charms.mutual_tls_interface.v0.dummy_provider_charm.src.charm im
     DummyMutualTLSProviderCharm,
 )
 
+BASE_LIB_DIR = "lib.charms.mutual_tls_interface.v0.mutual_tls"
+
 
 class TestMutualTLSProvides(unittest.TestCase):
     def setUp(self):
@@ -67,6 +69,16 @@ class TestMutualTLSProvides(unittest.TestCase):
         self.assertEqual(relation_data["ca"], ca)
         self.assertEqual(relation_data["chain"], json.dumps(chain))
 
+    def test_given_no_mutual_tls_relation_when_set_certificate_then_runtime_error_is_raised(self):
+        certificate = "whatever cert"
+        ca = "whatever ca"
+        chain = ["whatever cert 1", "whatever cert 2"]
+
+        with self.assertRaises(RuntimeError):
+            self.harness.charm.mutual_tls.set_certificate(
+                certificate=certificate, ca=ca, chain=chain
+            )
+
     def test_given_mutual_tls_relation_exists_when_remove_certificate_then_certificate_removed_from_relation_data(  # noqa: E501
         self,
     ):
@@ -92,6 +104,27 @@ class TestMutualTLSProvides(unittest.TestCase):
         assert "ca" not in relation_data
         assert "chain" not in relation_data
 
+    def test_given_only_certificate_in_relation_data_when_remove_certificate_then_certificate_removed_from_relation_data(  # noqa: E501
+        self,
+    ):
+        relation_id = self.create_mutual_tls_relation()
+        relation_data = {
+            "certificate": "whatever cert",
+        }
+        self.harness.update_relation_data(
+            relation_id=relation_id,
+            key_values=relation_data,
+            app_or_unit="mutual-tls-interface-provider/0",
+        )
+
+        self.harness.charm.mutual_tls.remove_certificate(relation_id=relation_id)
+
+        relation_data = self.harness.get_relation_data(
+            app_or_unit="mutual-tls-interface-provider/0",
+            relation_id=relation_id,
+        )
+        assert "certificate" not in relation_data
+
     def test_given_mutual_tls_relation_exists_and_id_not_provided_when_remove_certificate_then_certificate_removed_from_relation_data(  # noqa: E501
         self,
     ):
@@ -116,3 +149,19 @@ class TestMutualTLSProvides(unittest.TestCase):
         assert "certificate" not in relation_data
         assert "ca" not in relation_data
         assert "chain" not in relation_data
+
+    def test_given_mutual_tls_relation_doesnt_exist_when_remove_then_log_is_emitted(self):
+        with self.assertLogs(BASE_LIB_DIR, level="WARNING") as log:
+            self.harness.charm.mutual_tls.remove_certificate()
+
+        assert "Can't remove certificate - Non-existent relation 'certificates'" in log.output[0]
+
+    def test_given_no_data_in_mutual_tls_relation_when_remove_certificate_then_log_is_emitted(  # noqa: E501
+        self,
+    ):
+        self.create_mutual_tls_relation()
+
+        with self.assertLogs(BASE_LIB_DIR, level="WARNING") as log:
+            self.harness.charm.mutual_tls.remove_certificate()
+
+        assert "Can't remove certificate - No certificate in relation data" in log.output[0]

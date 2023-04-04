@@ -126,7 +126,6 @@ PROVIDER_JSON_SCHEMA = {
             ],
         }
     ],
-    "required": ["certificate"],
     "properties": {
         "certificate": {
             "$id": "#/properties/certificate",
@@ -148,6 +147,7 @@ PROVIDER_JSON_SCHEMA = {
             "description": "CA public TLS certificate chain",
         },
     },
+    "anyOf": [{"required": ["certificate"]}, {"required": ["ca"]}, {"required": ["chain"]}],
     "additionalProperties": True,
 }
 
@@ -259,12 +259,26 @@ class MutualTLSProvides(Object):
             relation_id=relation_id,
         )
         if not relation:
+            logger.warning(
+                f"Can't remove certificate - Non-existent relation '{self.relationship_name}'"
+            )
             return
-        if not relation.data:
-            return
-        relation.data[self.model.unit].pop("certificate")
-        relation.data[self.model.unit].pop("ca")
-        relation.data[self.model.unit].pop("chain")
+        unit_relation_data = relation.data[self.model.unit]
+        certificate_removed = False
+        if "certificate" in unit_relation_data:
+            relation.data[self.model.unit].pop("certificate")
+            certificate_removed = True
+        if "ca" in unit_relation_data:
+            relation.data[self.model.unit].pop("ca")
+            certificate_removed = True
+        if "chain" in unit_relation_data:
+            relation.data[self.model.unit].pop("chain")
+            certificate_removed = True
+
+        if certificate_removed:
+            logger.warning("Certificate removed from relation data")
+        else:
+            logger.warning("Can't remove certificate - No certificate in relation data")
 
 
 class MutualTLSRequires(Object):
@@ -326,7 +340,7 @@ class MutualTLSRequires(Object):
             )
             return
         self.on.certificate_available.emit(
-            certificate=remote_unit_relation_data["certificate"],
-            ca=remote_unit_relation_data["ca"],
-            chain=remote_unit_relation_data["chain"],
+            certificate=remote_unit_relation_data.get("certificate"),
+            ca=remote_unit_relation_data.get("ca"),
+            chain=remote_unit_relation_data.get("chain"),
         )
