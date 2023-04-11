@@ -280,7 +280,7 @@ class MutualTLSProvides:
             logger.warning("Can't remove certificate - No certificate in relation data")
 
 
-class MutualTLSRequires(Object):
+class MutualTLSRequires:
     """TLS certificates requirer class to be instantiated by TLS certificates requirers."""
 
     on = MutualTLSRequirerCharmEvents()
