@@ -206,7 +206,7 @@ class MutualTLSRequirerCharmEvents(CharmEvents):
     certificate_available = EventSource(CertificateAvailableEvent)
 
 
-class MutualTLSProvides(Object):
+class MutualTLSProvides:
     """Mutual TLS provider class."""
 
     def __init__(self, charm: CharmBase, relationship_name: str):
