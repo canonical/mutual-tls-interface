@@ -297,7 +297,6 @@ class MutualTLSRequires(Object):
             charm: Charm object
             relationship_name: Juju relation name
         """
-        super().__init__(charm, relationship_name)
         self.relationship_name = relationship_name
         self.charm = charm
         self.framework.observe(
