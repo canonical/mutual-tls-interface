@@ -210,7 +210,6 @@ class MutualTLSProvides:
     """Mutual TLS provider class."""
 
     def __init__(self, charm: CharmBase, relationship_name: str):
-        super().__init__(charm, relationship_name)
         self.charm = charm
         self.relationship_name = relationship_name
 
