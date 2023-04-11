@@ -12,9 +12,6 @@ From a charm directory, fetch the library using `charmcraft`:
 charmcraft fetch-lib charms.mutual_tls_interface.v0.mutual_tls
 ```
 
-Add the following libraries to the charm's `requirements.txt` file:
-- jsonschema
-
 ### Provider charm
 The provider charm is the charm providing public certificates to another charm that requires them.
 
@@ -104,6 +101,8 @@ LIBAPI = 0
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
 LIBPATCH = 1
+
+PYDEPS = ["jsonschema"]
 
 
 logger = logging.getLogger(__name__)
@@ -206,10 +205,11 @@ class MutualTLSRequirerCharmEvents(CharmEvents):
     certificate_available = EventSource(CertificateAvailableEvent)
 
 
-class MutualTLSProvides:
+class MutualTLSProvides(Object):
     """Mutual TLS provider class."""
 
     def __init__(self, charm: CharmBase, relationship_name: str):
+        super().__init__(charm, relationship_name)
         self.charm = charm
         self.relationship_name = relationship_name
 
@@ -280,7 +280,7 @@ class MutualTLSProvides:
             logger.warning("Can't remove certificate - No certificate in relation data")
 
 
-class MutualTLSRequires:
+class MutualTLSRequires(Object):
     """TLS certificates requirer class to be instantiated by TLS certificates requirers."""
 
     on = MutualTLSRequirerCharmEvents()
@@ -296,6 +296,7 @@ class MutualTLSRequires:
             charm: Charm object
             relationship_name: Juju relation name
         """
+        super().__init__(charm, relationship_name)
         self.relationship_name = relationship_name
         self.charm = charm
         self.framework.observe(
